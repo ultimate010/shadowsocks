@@ -26,6 +26,9 @@ remote server.
     apt-get install python-pip python-m2crypto
     pip install shadowsocks
 
+Or simply `apt-get install shadowsocks` if you have [Debian sid] in your
+source list.
+
 #### CentOS:
 
     yum install m2crypto python-setuptools
@@ -60,7 +63,7 @@ Explanation of the fields:
 | local_port    | local port                                      |
 | password      | password used for encryption                    |
 | timeout       | in seconds                                      |
-| method        | encryption method, "aes-256-cfb" is recommended |
+| method        | default: "aes-256-cfb", see [Encryption]        |
 | fast_open     | use [TCP_FASTOPEN], true / false                |
 | workers       | number of workers, available on Unix/Linux      |
 
@@ -99,6 +102,7 @@ List all available args with `-h`.
 Wiki
 ----
 
+You can find all the documentation in the wiki:
 https://github.com/clowwindy/shadowsocks/wiki
 
 License
@@ -117,6 +121,8 @@ Bugs and Issues
 [Build Status]:      https://img.shields.io/travis/clowwindy/shadowsocks/master.svg?style=flat
 [Chinese Readme]:    https://github.com/clowwindy/shadowsocks/wiki/Shadowsocks-%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E
 [Chrome Standalone]: https://support.google.com/installer/answer/126299
+[Debian sid]:        https://packages.debian.org/unstable/python/shadowsocks
+[Encryption]:        https://github.com/clowwindy/shadowsocks/wiki/Encryption
 [iOS]:               https://github.com/shadowsocks/shadowsocks-iOS/wiki/Help
 [Issue Tracker]:     https://github.com/clowwindy/shadowsocks/issues?state=open
 [Mailing list]:      http://groups.google.com/group/shadowsocks

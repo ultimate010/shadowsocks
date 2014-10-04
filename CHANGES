@@ -1,4 +1,20 @@
-2.1.0 2014-08-01
+2.3 2014-09-23
+- Support CFB1, CFB8 and CTR mode of AES
+- Do not require password config when using port_password
+- Use SIGTERM instead of SIGQUIT on Windows
+
+2.2.2 2014-09-14
+- Fix when multiple DNS set, IPv6 only sites are broken
+
+2.2.1 2014-09-10
+- Support graceful shutdown
+- Fix some bugs
+
+2.2.0 2014-09-09
+- Add RC4-MD5 encryption
+
+2.1.0 2014-08-10
+- Use only IPv4 DNS server
 - Does not ship config.json
 - Better error message
 

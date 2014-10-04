@@ -218,6 +218,8 @@ def parse_response(data):
             response = DNSResponse()
             if qds:
                 response.hostname = qds[0][0]
+            for an in qds:
+                response.questions.append((an[1], an[2], an[3]))
             for an in ans:
                 response.answers.append((an[1], an[2], an[3]))
             return response
@@ -232,7 +234,7 @@ def is_ip(address):
     for family in (socket.AF_INET, socket.AF_INET6):
         try:
             socket.inet_pton(family, address)
-            return True
+            return family
         except (TypeError, ValueError, OSError, IOError):
             pass
     return False
@@ -249,6 +251,7 @@ def is_valid_hostname(hostname):
 class DNSResponse(object):
     def __init__(self):
         self.hostname = None
+        self.questions = []  # each: (addr, type, class)
         self.answers = []  # each: (addr, type, class)
 
     def __str__(self):
@@ -289,7 +292,7 @@ class DNSResolver(object):
                             parts = line.split()
                             if len(parts) >= 2:
                                 server = parts[1]
-                                if is_ip(server):
+                                if is_ip(server) == socket.AF_INET:
                                     self._servers.append(server)
         except IOError:
             pass
@@ -324,7 +327,7 @@ class DNSResolver(object):
                                    socket.SOL_UDP)
         self._sock.setblocking(False)
         loop.add(self._sock, eventloop.POLL_IN)
-        loop.add_handler(self.handle_events)
+        loop.add_handler(self.handle_events, ref=False)
 
     def _call_callback(self, hostname, ip, error=None):
         callbacks = self._hostname_to_cb.get(hostname, [])
@@ -358,7 +361,12 @@ class DNSResolver(object):
             else:
                 if ip:
                     self._cache[hostname] = ip
-                self._call_callback(hostname, ip)
+                    self._call_callback(hostname, ip)
+                elif self._hostname_status.get(hostname, None) == STATUS_IPV6:
+                    for question in response.questions:
+                        if question[1] == QTYPE_AAAA:
+                            self._call_callback(hostname, None)
+                            break
 
     def handle_events(self, events):
         for sock, fd, event in events:
@@ -403,8 +411,8 @@ class DNSResolver(object):
             self._request_id = 1
         req = build_request(hostname, qtype, self._request_id)
         for server in self._servers:
-            logging.debug('resolving %s with type %d using server %s', hostname,
-                          qtype, server)
+            logging.debug('resolving %s with type %d using server %s',
+                          hostname, qtype, server)
             self._sock.sendto(req, (server, 53))
 
     def resolve(self, hostname, callback):
@@ -439,40 +447,3 @@ class DNSResolver(object):
         if self._sock:
             self._sock.close()
             self._sock = None
-
-
-def test():
-    logging.getLogger('').handlers = []
-    logging.basicConfig(level=logging.DEBUG,
-                        format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S', filemode='a+')
-
-    def _callback(address, error):
-        print error, address
-
-    loop = eventloop.EventLoop()
-    resolver = DNSResolver()
-    resolver.add_to_loop(loop)
-
-    for hostname in ['www.google.com',
-                     '8.8.8.8',
-                     'localhost',
-                     'activate.adobe.com',
-                     'www.twitter.com',
-                     'ipv6.google.com',
-                     'ipv6.l.google.com',
-                     'www.gmail.com',
-                     'r4---sn-3qqp-ioql.googlevideo.com',
-                     'www.baidu.com',
-                     'www.a.shifen.com',
-                     'm.baidu.jp',
-                     'www.youku.com',
-                     'www.twitter.com',
-                     'ipv6.google.com']:
-        resolver.resolve(hostname, _callback)
-
-    loop.run()
-
-
-if __name__ == '__main__':
-    test()

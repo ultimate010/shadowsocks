@@ -26,7 +26,18 @@ import hashlib
 import string
 import struct
 import logging
-import encrypt_salsa20
+import crypto.m2
+import crypto.rc4_md5
+import crypto.salsa20_ctr
+import crypto.ctypes_openssl
+
+
+method_supported = {}
+
+method_supported.update(crypto.m2.ciphers)
+method_supported.update(crypto.rc4_md5.ciphers)
+method_supported.update(crypto.salsa20_ctr.ciphers)
+method_supported.update(crypto.ctypes_openssl.ciphers)
 
 
 def random_string(length):
@@ -56,13 +67,6 @@ def get_table(key):
 def init_table(key, method=None):
     if method is not None and method == 'table':
         method = None
-    if method:
-        try:
-            __import__('M2Crypto')
-        except ImportError:
-            logging.error(('M2Crypto is required to use %s, please run'
-                           ' `apt-get install python-m2crypto`') % method)
-            sys.exit(1)
     if not method:
         if key in cached_tables:
             return cached_tables[key]
@@ -102,24 +106,6 @@ def EVP_BytesToKey(password, key_len, iv_len):
     return (key, iv)
 
 
-method_supported = {
-    'aes-128-cfb': (16, 16),
-    'aes-192-cfb': (24, 16),
-    'aes-256-cfb': (32, 16),
-    'bf-cfb': (16, 8),
-    'camellia-128-cfb': (16, 16),
-    'camellia-192-cfb': (24, 16),
-    'camellia-256-cfb': (32, 16),
-    'cast5-cfb': (16, 8),
-    'des-cfb': (8, 8),
-    'idea-cfb': (16, 8),
-    'rc2-cfb': (16, 8),
-    'rc4': (16, 0),
-    'seed-cfb': (16, 16),
-    'salsa20-ctr': (32, 8),
-}
-
-
 class Encryptor(object):
     def __init__(self, key, method=None):
         if method == 'table':
@@ -136,7 +122,7 @@ class Encryptor(object):
             self.encrypt_table, self.decrypt_table = init_table(key)
             self.cipher = None
 
-    def get_cipher_len(self, method):
+    def get_cipher_param(self, method):
         method = method.lower()
         m = method_supported.get(method, None)
         return m
@@ -147,21 +133,16 @@ class Encryptor(object):
     def get_cipher(self, password, method, op, iv=None):
         password = password.encode('utf-8')
         method = method.lower()
-        m = self.get_cipher_len(method)
+        m = self.get_cipher_param(method)
         if m:
             key, iv_ = EVP_BytesToKey(password, m[0], m[1])
             if iv is None:
                 iv = iv_
             iv = iv[:m[1]]
             if op == 1:
-                self.cipher_iv = iv[:m[1]]  # this iv is for cipher not decipher
-            if method != 'salsa20-ctr':
-                import M2Crypto.EVP
-                return M2Crypto.EVP.Cipher(method.replace('-', '_'), key, iv,
-                                           op, key_as_bytes=0, d='md5',
-                                           salt=None, i=1, padding=1)
-            else:
-                return encrypt_salsa20.Salsa20Cipher(method, key, iv, op)
+                # this iv is for cipher not decipher
+                self.cipher_iv = iv[:m[1]]
+            return m[2](method, key, iv, op)
 
         logging.error('method %s not supported' % method)
         sys.exit(1)
@@ -185,7 +166,7 @@ class Encryptor(object):
             return string.translate(buf, self.decrypt_table)
         else:
             if self.decipher is None:
-                decipher_iv_len = self.get_cipher_len(self.method)[1]
+                decipher_iv_len = self.get_cipher_param(self.method)[1]
                 decipher_iv = buf[:decipher_iv_len]
                 self.decipher = self.get_cipher(self.key, self.method, 0,
                                                 iv=decipher_iv)
@@ -205,10 +186,9 @@ def encrypt_all(password, method, op, data):
         else:
             return string.translate(data, decrypt_table)
     else:
-        import M2Crypto.EVP
         result = []
         method = method.lower()
-        (key_len, iv_len) = method_supported[method]
+        (key_len, iv_len, m) = method_supported[method]
         (key, _) = EVP_BytesToKey(password, key_len, iv_len)
         if op:
             iv = random_string(iv_len)
@@ -216,11 +196,6 @@ def encrypt_all(password, method, op, data):
         else:
             iv = data[:iv_len]
             data = data[iv_len:]
-        if method != 'salsa20-ctr':
-            cipher = M2Crypto.EVP.Cipher(method.replace('-', '_'), key, iv,
-                                         op, key_as_bytes=0, d='md5',
-                                         salt=None, i=1, padding=1)
-        else:
-            cipher = encrypt_salsa20.Salsa20Cipher(method, key, iv, op)
+        cipher = m(method, key, iv, op)
         result.append(cipher.update(data))
         return ''.join(result)

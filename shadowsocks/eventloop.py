@@ -154,6 +154,7 @@ class SelectLoop(object):
 
 class EventLoop(object):
     def __init__(self):
+        self._iterating = False
         if hasattr(select, 'epoll'):
             self._impl = EpollLoop()
             model = 'epoll'
@@ -168,7 +169,8 @@ class EventLoop(object):
                             'package')
         self._fd_to_f = {}
         self._handlers = []
-        self.stopping = False
+        self._ref_handlers = []
+        self._handlers_to_remove = []
         logging.debug('using event model: %s', model)
 
     def poll(self, timeout=None):
@@ -182,30 +184,44 @@ class EventLoop(object):
 
     def remove(self, f):
         fd = f.fileno()
-        self._fd_to_f[fd] = None
+        del self._fd_to_f[fd]
         self._impl.remove_fd(fd)
 
     def modify(self, f, mode):
         fd = f.fileno()
         self._impl.modify_fd(fd, mode)
 
-    def add_handler(self, handler):
+    def add_handler(self, handler, ref=True):
         self._handlers.append(handler)
+        if ref:
+            # when all ref handlers are removed, loop stops
+            self._ref_handlers.append(handler)
+
+    def remove_handler(self, handler):
+        if handler in self._ref_handlers:
+            self._ref_handlers.remove(handler)
+        if self._iterating:
+            self._handlers_to_remove.append(handler)
+        else:
+            self._handlers.remove(handler)
 
     def run(self):
-        while not self.stopping:
+        events = []
+        while self._ref_handlers:
             try:
                 events = self.poll(1)
             except (OSError, IOError) as e:
-                if errno_from_exception(e) == errno.EPIPE:
-                    # Happens when the client closes the connection
-                    logging.error('poll:%s', e)
-                    continue
+                if errno_from_exception(e) in (errno.EPIPE, errno.EINTR):
+                    # EPIPE: Happens when the client closes the connection
+                    # EINTR: Happens when received a signal
+                    # handles them as soon as possible
+                    logging.debug('poll:%s', e)
                 else:
                     logging.error('poll:%s', e)
                     import traceback
                     traceback.print_exc()
                     continue
+            self._iterating = True
             for handler in self._handlers:
                 # TODO when there are a lot of handlers
                 try:
@@ -214,6 +230,10 @@ class EventLoop(object):
                     logging.error(e)
                     import traceback
                     traceback.print_exc()
+            for handler in self._handlers_to_remove:
+                self._handlers.remove(handler)
+                self._handlers_to_remove = []
+            self._iterating = False
 
 
 # from tornado

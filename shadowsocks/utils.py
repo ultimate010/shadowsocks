@@ -90,7 +90,7 @@ def get_config(is_local):
         longopts = ['fast-open']
     else:
         shortopts = 'hs:p:k:m:c:t:vq'
-        longopts = ['fast-open', 'workers:']
+        longopts = ['fast-open', 'workers=']
     try:
         config_path = find_config()
         optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
@@ -134,7 +134,7 @@ def get_config(is_local):
             elif key == '--fast-open':
                 config['fast_open'] = True
             elif key == '--workers':
-                config['workers'] = value
+                config['workers'] = int(value)
             elif key == '-h':
                 if is_local:
                     print_local_help()
@@ -154,7 +154,7 @@ def get_config(is_local):
         print_help(is_local)
         sys.exit(2)
 
-    config['password'] = config.get('password', None)
+    config['password'] = config.get('password', '')
     config['method'] = config.get('method', 'aes-256-cfb')
     config['port_password'] = config.get('port_password', None)
     config['timeout'] = int(config.get('timeout', 300))
@@ -172,10 +172,22 @@ def get_config(is_local):
         config['server'] = config.get('server', '0.0.0.0')
     config['server_port'] = config.get('server_port', 8388)
 
-    if not ('password' in config and config['password']):
+    if is_local and not config.get('password', None):
         logging.error('password not specified')
         print_help(is_local)
         sys.exit(2)
+
+    if not is_local and not config.get('password', None) \
+            and not config.get('port_password', None):
+        logging.error('password or port_password not specified')
+        print_help(is_local)
+        sys.exit(2)
+
+    if 'local_port' in config:
+        config['local_port'] = int(config['local_port'])
+
+    if 'server_port' in config and type(config['server_port']) != list:
+        config['server_port'] = int(config['server_port'])
 
     logging.getLogger('').handlers = []
     logging.addLevelName(VERBOSE_LEVEL, 'VERBOSE')

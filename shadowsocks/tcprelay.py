@@ -201,8 +201,9 @@ class TCPRelayHandler(object):
                 self._config['fast_open']:
             try:
                 self._fastopen_connected = True
-                remote_sock = self._create_remote_socket(self._chosen_server[0],
-                                                         self._chosen_server[1])
+                remote_sock = \
+                    self._create_remote_socket(self._chosen_server[0],
+                                               self._chosen_server[1])
                 self._loop.add(remote_sock, eventloop.POLL_ERR)
                 data = ''.join(self._data_to_write_to_local)
                 l = len(data)
@@ -497,8 +498,8 @@ class TCPRelay(object):
 
         self._timeout = config['timeout']
         self._timeouts = []  # a list for all the handlers
-        self._timeout_offset = 0  # last checked position for timeout
-                                  # we trim the timeouts once a while
+        # we trim the timeouts once a while
+        self._timeout_offset = 0   # last checked position for timeout
         self._handler_to_timeouts = {}  # key: handler value: index in timeouts
 
         if is_local:
@@ -507,6 +508,7 @@ class TCPRelay(object):
         else:
             listen_addr = config['server']
             listen_port = config['server_port']
+        self._listen_port = listen_port
 
         addrs = socket.getaddrinfo(listen_addr, listen_port, 0,
                                    socket.SOCK_STREAM, socket.SOL_TCP)
@@ -606,9 +608,9 @@ class TCPRelay(object):
                 try:
                     logging.debug('accept')
                     conn = self._server_socket.accept()
-                    TCPRelayHandler(self, self._fd_to_handlers, self._eventloop,
-                                    conn[0], self._config, self._dns_resolver,
-                                    self._is_local)
+                    TCPRelayHandler(self, self._fd_to_handlers,
+                                    self._eventloop, conn[0], self._config,
+                                    self._dns_resolver, self._is_local)
                 except (OSError, IOError) as e:
                     error_no = eventloop.errno_from_exception(e)
                     if error_no in (errno.EAGAIN, errno.EINPROGRESS,
@@ -630,7 +632,16 @@ class TCPRelay(object):
         if now - self._last_time > TIMEOUT_PRECISION:
             self._sweep_timeout()
             self._last_time = now
+        if self._closed:
+            if self._server_socket:
+                self._eventloop.remove(self._server_socket)
+                self._server_socket.close()
+                self._server_socket = None
+                logging.info('closed listen port %d', self._listen_port)
+            if not self._fd_to_handlers:
+                self._eventloop.remove_handler(self._handle_events)
 
-    def close(self):
+    def close(self, next_tick=False):
         self._closed = True
-        self._server_socket.close()
+        if not next_tick:
+            self._server_socket.close()

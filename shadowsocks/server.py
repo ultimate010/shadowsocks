@@ -24,6 +24,7 @@
 import sys
 import os
 import logging
+import signal
 import utils
 import encrypt
 import eventloop
@@ -40,7 +41,7 @@ def main():
     utils.print_shadowsocks()
 
     if config['port_password']:
-        if config['server_port'] or config['password']:
+        if config['password']:
             logging.warn('warning: port_password should not be used with '
                          'server_port and password. server_port and password '
                          'will be ignored')
@@ -67,19 +68,22 @@ def main():
         udp_servers.append(udprelay.UDPRelay(a_config, dns_resolver, False))
 
     def run_server():
+        def child_handler(signum, _):
+            logging.warn('received SIGQUIT, doing graceful shutting down..')
+            map(lambda s: s.close(next_tick=True), tcp_servers + udp_servers)
+        signal.signal(getattr(signal, 'SIGQUIT', signal.SIGTERM),
+                      child_handler)
         try:
             loop = eventloop.EventLoop()
             dns_resolver.add_to_loop(loop)
-            for tcp_server in tcp_servers:
-                tcp_server.add_to_loop(loop)
-            for udp_server in udp_servers:
-                udp_server.add_to_loop(loop)
+            map(lambda s: s.add_to_loop(loop), tcp_servers + udp_servers)
             loop.run()
         except (KeyboardInterrupt, IOError, OSError) as e:
             logging.error(e)
-            import traceback
-            traceback.print_exc()
-            os._exit(0)
+            if config['verbose']:
+                import traceback
+                traceback.print_exc()
+            os._exit(1)
 
     if int(config['workers']) > 1:
         if os.name == 'posix':
@@ -97,11 +101,13 @@ def main():
             if not is_child:
                 def handler(signum, _):
                     for pid in children:
-                        os.kill(pid, signum)
-                        os.waitpid(pid, 0)
+                        try:
+                            os.kill(pid, signum)
+                        except OSError:  # child may already exited
+                            pass
                     sys.exit()
-                import signal
                 signal.signal(signal.SIGTERM, handler)
+                signal.signal(signal.SIGQUIT, handler)
 
                 # master
                 for a_tcp_server in tcp_servers:
