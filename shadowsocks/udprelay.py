@@ -65,6 +65,8 @@
 # `client`  means UDP clients that connects to other servers
 # `server`  means the UDP server that handles user requests
 
+from __future__ import absolute_import, division, print_function, \
+    with_statement
 
 import time
 import socket
@@ -72,10 +74,9 @@ import logging
 import struct
 import errno
 import random
-import encrypt
-import eventloop
-import lru_cache
-from common import parse_header, pack_addr
+
+from shadowsocks import encrypt, eventloop, lru_cache, common
+from shadowsocks.common import parse_header, pack_addr
 
 
 BUF_SIZE = 65536
@@ -147,7 +148,7 @@ class UDPRelay(object):
         if not data:
             logging.debug('UDP handle_server: data is empty')
         if self._is_local:
-            frag = ord(data[2])
+            frag = common.ord(data[2])
             if frag != 0:
                 logging.warn('drop a message since frag is not 0')
                 return
@@ -228,7 +229,7 @@ class UDPRelay(object):
             if header_result is None:
                 return
             # addrtype, dest_addr, dest_port, header_length = header_result
-            response = '\x00\x00\x00' + data
+            response = b'\x00\x00\x00' + data
         client_addr = self._client_fd_to_server_addr.get(sock.fileno())
         if client_addr:
             self._server_socket.sendto(response, client_addr)

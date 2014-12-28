@@ -1,7 +1,9 @@
 shadowsocks
 ===========
 
-[![PyPI version]][PyPI] [![Build Status]][Travis CI] 
+[![PyPI version]][PyPI]
+[![Build Status]][Travis CI]
+[![Coverage Status]][Coverage]
 
 A fast tunnel proxy that helps you bypass firewalls.
 
@@ -10,7 +12,7 @@ A fast tunnel proxy that helps you bypass firewalls.
 Install
 -------
 
-You'll have a client on your local machine, and install a server on a
+You'll have a client on your local side, and setup a server on a
 remote server.
 
 ### Client
@@ -23,7 +25,7 @@ remote server.
 
 #### Debian / Ubuntu:
 
-    apt-get install python-pip python-m2crypto
+    apt-get install python-pip
     pip install shadowsocks
 
 Or simply `apt-get install shadowsocks` if you have [Debian sid] in your
@@ -31,9 +33,16 @@ source list.
 
 #### CentOS:
 
-    yum install m2crypto python-setuptools
+    yum install python-setuptools
     easy_install pip
     pip install shadowsocks
+
+#### Windows:
+
+Download [OpenSSL for Windows] and install. Then install shadowsocks via
+easy_install and pip as Linux. If you don't know how to use them, you can
+directly download [the package], and use `python shadowsocks/server.py`
+instead of `ssserver` command below.
 
 Configuration
 -------------
@@ -49,8 +58,7 @@ Example:
         "password":"mypassword",
         "timeout":300,
         "method":"aes-256-cfb",
-        "fast_open": false,
-        "workers": 1
+        "fast_open": false
     }
 
 Explanation of the fields:
@@ -67,43 +75,36 @@ Explanation of the fields:
 | fast_open     | use [TCP_FASTOPEN], true / false                |
 | workers       | number of workers, available on Unix/Linux      |
 
-Run `ssserver -c /etc/shadowsocks.json` on your server. To run it in the
-background, use [Supervisor].
+On your server:
 
-On your client machine, use the same configuration as your server, and
-start your client.
+To run in the foreground:
 
-If you use Chrome, it's recommended to use [SwitchySharp]. Change the proxy 
-settings to
+    ssserver -c /etc/shadowsocks.json
 
-    protocol: socks5
-    hostname: 127.0.0.1
-    port:     your local_port
+To run in the background:
 
-If you can't install [SwitchySharp], you can launch Chrome with the following
-arguments to force Chrome to use the proxy:
+    ssserver -c /etc/shadowsocks.json -d start
+    ssserver -c /etc/shadowsocks.json -d stop
 
-    Chrome.exe --proxy-server="socks5://127.0.0.1:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost"
+On your client machine, use the same configuration as your server. Check the
+README of your client for more information.
 
-If you can't even download Chrome, find a friend to download a
-[Chrome Standalone] installer for you.
+Command Line Options
+--------------------
 
-Command line args
-------------------
-
-You can use args to override settings from `config.json`.
+Check the options via `-h`.You can use args to override settings from
+`config.json`.
 
     sslocal -s server_name -p server_port -l local_port -k password -m bf-cfb
     ssserver -p server_port -k password -m bf-cfb --workers 2
-    ssserver -c /etc/shadowsocks/config.json
+    ssserver -c /etc/shadowsocks/config.json -d start --pid-file=/tmp/shadowsocks.pid
+    ssserver -c /etc/shadowsocks/config.json -d stop --pid-file=/tmp/shadowsocks.pid
 
-List all available args with `-h`.
-
-Wiki
-----
+Documentation
+-------------
 
 You can find all the documentation in the wiki:
-https://github.com/clowwindy/shadowsocks/wiki
+https://github.com/shadowsocks/shadowsocks/wiki
 
 License
 -------
@@ -117,22 +118,23 @@ Bugs and Issues
 * [Mailing list]
 
 
-[Android]:           https://github.com/clowwindy/shadowsocks/wiki/Ports-and-Clients#android
-[Build Status]:      https://img.shields.io/travis/clowwindy/shadowsocks/master.svg?style=flat
-[Chinese Readme]:    https://github.com/clowwindy/shadowsocks/wiki/Shadowsocks-%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E
-[Chrome Standalone]: https://support.google.com/installer/answer/126299
+[Android]:           https://github.com/shadowsocks/shadowsocks/wiki/Ports-and-Clients#android
+[Build Status]:      https://img.shields.io/travis/shadowsocks/shadowsocks/master.svg?style=flat
+[Chinese Readme]:    https://github.com/shadowsocks/shadowsocks/wiki/Shadowsocks-%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E
+[Coverage Status]:   http://192.81.132.184/result/shadowsocks
+[Coverage]:          http://192.81.132.184/job/Shadowsocks/ws/htmlcov/index.html
 [Debian sid]:        https://packages.debian.org/unstable/python/shadowsocks
-[Encryption]:        https://github.com/clowwindy/shadowsocks/wiki/Encryption
+[the package]:       https://pypi.python.org/pypi/shadowsocks
+[Encryption]:        https://github.com/shadowsocks/shadowsocks/wiki/Encryption
 [iOS]:               https://github.com/shadowsocks/shadowsocks-iOS/wiki/Help
-[Issue Tracker]:     https://github.com/clowwindy/shadowsocks/issues?state=open
+[Issue Tracker]:     https://github.com/shadowsocks/shadowsocks/issues?state=open
 [Mailing list]:      http://groups.google.com/group/shadowsocks
-[OpenWRT]:           https://github.com/clowwindy/shadowsocks/wiki/Ports-and-Clients#openwrt
+[OpenSSL for Windows]: http://slproweb.com/products/Win32OpenSSL.html
+[OpenWRT]:           https://github.com/shadowsocks/shadowsocks/wiki/Ports-and-Clients#openwrt
 [OS X]:              https://github.com/shadowsocks/shadowsocks-iOS/wiki/Shadowsocks-for-OSX-Help
 [PyPI]:              https://pypi.python.org/pypi/shadowsocks
 [PyPI version]:      https://img.shields.io/pypi/v/shadowsocks.svg?style=flat
-[Supervisor]:        https://github.com/clowwindy/shadowsocks/wiki/Configure-Shadowsocks-with-Supervisor
-[TCP_FASTOPEN]:      https://github.com/clowwindy/shadowsocks/wiki/TCP-Fast-Open
-[Travis CI]:         https://travis-ci.org/clowwindy/shadowsocks
-[Troubleshooting]:   https://github.com/clowwindy/shadowsocks/wiki/Troubleshooting
-[SwitchySharp]:      https://chrome.google.com/webstore/detail/proxy-switchysharp/dpplabbmogkhghncfbfdeeokoefdjegm
-[Windows]:           https://github.com/clowwindy/shadowsocks/wiki/Ports-and-Clients#windows
+[TCP_FASTOPEN]:      https://github.com/shadowsocks/shadowsocks/wiki/TCP-Fast-Open
+[Travis CI]:         https://travis-ci.org/shadowsocks/shadowsocks
+[Troubleshooting]:   https://github.com/shadowsocks/shadowsocks/wiki/Troubleshooting
+[Windows]:           https://github.com/shadowsocks/shadowsocks/wiki/Ports-and-Clients#windows

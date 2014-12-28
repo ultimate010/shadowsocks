@@ -1,3 +1,36 @@
+2.6.1 2014-12-26
+- Fix a problem with TCP Fast Open on local side
+- Fix sometimes daemon_start returns wrong exit status
+
+2.6 2014-12-21
+- Add daemon support
+
+2.5 2014-12-11
+- Add salsa20 and chacha20
+
+2.4.3 2014-11-10
+- Fix an issue on Python 3
+- Fix an issue with IPv6
+
+2.4.2 2014-11-06
+- Fix command line arguments on Python 3
+- Support table on Python 3
+- Fix TCP Fast Open on Python 3
+
+2.4.1 2014-11-01
+- Fix setup.py for non-utf8 locales on Python 3
+
+2.4 2014-11-01
+- Python 3 support
+- Performance improvement
+- Fix LRU cache behavior
+
+2.3.2 2014-10-11
+- Fix OpenSSL on Windows
+
+2.3.1 2014-10-09
+- Does not require M2Crypto any more
+
 2.3 2014-09-23
 - Support CFB1, CFB8 and CTR mode of AES
 - Do not require password config when using port_password

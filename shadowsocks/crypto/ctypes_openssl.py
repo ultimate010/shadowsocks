@@ -20,28 +20,35 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from __future__ import absolute_import, division, print_function, \
+    with_statement
+
 import logging
+from ctypes import CDLL, c_char_p, c_int, c_long, byref,\
+    create_string_buffer, c_void_p
 
 __all__ = ['ciphers']
 
+libcrypto = None
 loaded = False
 
 buf_size = 2048
 
 
 def load_openssl():
-    global loaded, libcrypto, CDLL, c_char_p, c_int, c_long, byref,\
-        create_string_buffer, c_void_p, buf
-    from ctypes import CDLL, c_char_p, c_int, c_long, byref,\
-        create_string_buffer, c_void_p
+    global loaded, libcrypto, buf
+
     from ctypes.util import find_library
-    libcrypto_path = find_library('crypto')
+    for p in ('crypto', 'eay32', 'libeay32'):
+        libcrypto_path = find_library(p)
+        if libcrypto_path:
+            break
+    else:
+        raise Exception('libcrypto(OpenSSL) not found')
     logging.info('loading libcrypto from %s', libcrypto_path)
     libcrypto = CDLL(libcrypto_path)
     libcrypto.EVP_get_cipherbyname.restype = c_void_p
     libcrypto.EVP_CIPHER_CTX_new.restype = c_void_p
-    libcrypto.EVP_CIPHER_CTX_new.argtypes = (c_void_p, c_void_p, c_char_p,
-                                             c_char_p)
 
     libcrypto.EVP_CipherInit_ex.argtypes = (c_void_p, c_void_p, c_char_p,
                                             c_char_p, c_char_p, c_int)
@@ -51,13 +58,17 @@ def load_openssl():
 
     libcrypto.EVP_CIPHER_CTX_cleanup.argtypes = (c_void_p,)
     libcrypto.EVP_CIPHER_CTX_free.argtypes = (c_void_p,)
+    if hasattr(libcrypto, 'OpenSSL_add_all_ciphers'):
+        libcrypto.OpenSSL_add_all_ciphers()
 
     buf = create_string_buffer(buf_size)
     loaded = True
 
 
-def load_ctr_cipher(cipher_name):
-    func_name = 'EVP_' + cipher_name.replace('-', '_')
+def load_cipher(cipher_name):
+    func_name = b'EVP_' + cipher_name.replace(b'-', b'_')
+    if bytes != str:
+        func_name = str(func_name, 'utf-8')
     cipher = getattr(libcrypto, func_name, None)
     if cipher:
         cipher.restype = c_void_p
@@ -70,16 +81,14 @@ class CtypesCrypto(object):
         if not loaded:
             load_openssl()
         self._ctx = None
-        if 'ctr' in cipher_name:
-            cipher = load_ctr_cipher(cipher_name)
-        else:
-            cipher = libcrypto.EVP_get_cipherbyname(cipher_name)
+        cipher = libcrypto.EVP_get_cipherbyname(cipher_name)
+        if not cipher:
+            cipher = load_cipher(cipher_name)
         if not cipher:
             raise Exception('cipher %s not found in libcrypto' % cipher_name)
         key_ptr = c_char_p(key)
         iv_ptr = c_char_p(iv)
-        self._ctx = libcrypto.EVP_CIPHER_CTX_new(cipher, None,
-                                                 key_ptr, iv_ptr)
+        self._ctx = libcrypto.EVP_CIPHER_CTX_new()
         if not self._ctx:
             raise Exception('can not create cipher context')
         r = libcrypto.EVP_CipherInit_ex(self._ctx, cipher, None,
@@ -110,58 +119,70 @@ class CtypesCrypto(object):
 
 
 ciphers = {
-    'aes-128-ctr': (16, 16, CtypesCrypto),
-    'aes-192-ctr': (24, 16, CtypesCrypto),
-    'aes-256-ctr': (32, 16, CtypesCrypto),
-    'aes-128-cfb8': (16, 16, CtypesCrypto),
-    'aes-192-cfb8': (24, 16, CtypesCrypto),
-    'aes-256-cfb8': (32, 16, CtypesCrypto),
-    'aes-128-cfb1': (16, 16, CtypesCrypto),
-    'aes-192-cfb1': (24, 16, CtypesCrypto),
-    'aes-256-cfb1': (32, 16, CtypesCrypto),
+    b'aes-128-cfb': (16, 16, CtypesCrypto),
+    b'aes-192-cfb': (24, 16, CtypesCrypto),
+    b'aes-256-cfb': (32, 16, CtypesCrypto),
+    b'aes-128-ofb': (16, 16, CtypesCrypto),
+    b'aes-192-ofb': (24, 16, CtypesCrypto),
+    b'aes-256-ofb': (32, 16, CtypesCrypto),
+    b'aes-128-ctr': (16, 16, CtypesCrypto),
+    b'aes-192-ctr': (24, 16, CtypesCrypto),
+    b'aes-256-ctr': (32, 16, CtypesCrypto),
+    b'aes-128-cfb8': (16, 16, CtypesCrypto),
+    b'aes-192-cfb8': (24, 16, CtypesCrypto),
+    b'aes-256-cfb8': (32, 16, CtypesCrypto),
+    b'aes-128-cfb1': (16, 16, CtypesCrypto),
+    b'aes-192-cfb1': (24, 16, CtypesCrypto),
+    b'aes-256-cfb1': (32, 16, CtypesCrypto),
+    b'bf-cfb': (16, 8, CtypesCrypto),
+    b'camellia-128-cfb': (16, 16, CtypesCrypto),
+    b'camellia-192-cfb': (24, 16, CtypesCrypto),
+    b'camellia-256-cfb': (32, 16, CtypesCrypto),
+    b'cast5-cfb': (16, 8, CtypesCrypto),
+    b'des-cfb': (8, 8, CtypesCrypto),
+    b'idea-cfb': (16, 8, CtypesCrypto),
+    b'rc2-cfb': (16, 8, CtypesCrypto),
+    b'rc4': (16, 0, CtypesCrypto),
+    b'seed-cfb': (16, 16, CtypesCrypto),
 }
 
 
-def test():
-    from os import urandom
-    import random
-    import time
+def run_method(method):
+    from shadowsocks.crypto import util
 
-    BLOCK_SIZE = 16384
-    rounds = 1 * 1024
-    plain = urandom(BLOCK_SIZE * rounds)
-    import M2Crypto.EVP
-    # cipher = M2Crypto.EVP.Cipher('aes_128_cfb', 'k' * 32, 'i' * 16, 1,
-    #                key_as_bytes=0, d='md5', salt=None, i=1,
-    #                padding=1)
-    # decipher = M2Crypto.EVP.Cipher('aes_128_cfb', 'k' * 32, 'i' * 16, 0,
-    #                key_as_bytes=0, d='md5', salt=None, i=1,
-    #                padding=1)
-    cipher = CtypesCrypto('aes-128-cfb', 'k' * 32, 'i' * 16, 1)
-    decipher = CtypesCrypto('aes-128-cfb', 'k' * 32, 'i' * 16, 0)
+    cipher = CtypesCrypto(method, b'k' * 32, b'i' * 16, 1)
+    decipher = CtypesCrypto(method, b'k' * 32, b'i' * 16, 0)
 
-    # cipher = Salsa20Cipher('salsa20-ctr', 'k' * 32, 'i' * 8, 1)
-    # decipher = Salsa20Cipher('salsa20-ctr', 'k' * 32, 'i' * 8, 1)
-    results = []
-    pos = 0
-    print 'salsa20 test start'
-    start = time.time()
-    while pos < len(plain):
-        l = random.randint(100, 32768)
-        c = cipher.update(plain[pos:pos + l])
-        results.append(c)
-        pos += l
-    pos = 0
-    c = ''.join(results)
-    results = []
-    while pos < len(plain):
-        l = random.randint(100, 32768)
-        results.append(decipher.update(c[pos:pos + l]))
-        pos += l
-    end = time.time()
-    print 'speed: %d bytes/s' % (BLOCK_SIZE * rounds / (end - start))
-    assert ''.join(results) == plain
+    util.run_cipher(cipher, decipher)
+
+
+def test_aes_128_cfb():
+    run_method(b'aes-128-cfb')
+
+
+def test_aes_256_cfb():
+    run_method(b'aes-256-cfb')
+
+
+def test_aes_128_cfb8():
+    run_method(b'aes-128-cfb8')
+
+
+def test_aes_256_ofb():
+    run_method(b'aes-256-ofb')
+
+
+def test_aes_256_ctr():
+    run_method(b'aes-256-ctr')
+
+
+def test_bf_cfb():
+    run_method(b'bf-cfb')
+
+
+def test_rc4():
+    run_method(b'rc4')
 
 
 if __name__ == '__main__':
-    test()
+    test_aes_128_cfb()
