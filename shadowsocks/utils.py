@@ -100,7 +100,8 @@ def get_config(is_local):
         longopts = ['help', 'fast-open', 'pid-file=', 'log-file=']
     else:
         shortopts = 'hd:s:p:k:m:c:t:vq'
-        longopts = ['help', 'fast-open', 'pid-file=', 'log-file=', 'workers=']
+        longopts = ['help', 'fast-open', 'pid-file=', 'log-file=', 'workers=',
+                    'forbidden-ip=']
     try:
         config_path = find_config()
         optlist, args = getopt.getopt(sys.argv[1:], shortopts, longopts)
@@ -146,6 +147,8 @@ def get_config(is_local):
                 config['fast_open'] = True
             elif key == '--workers':
                 config['workers'] = int(value)
+            elif key == '--forbidden-ip':
+                config['forbidden_ip'] = to_str(value).split(',')
             elif key in ('-h', '--help'):
                 if is_local:
                     print_local_help()
@@ -172,7 +175,7 @@ def get_config(is_local):
         sys.exit(2)
 
     config['password'] = config.get('password', '')
-    config['method'] = config.get('method', 'aes-256-cfb')
+    config['method'] = config.get('method', b'aes-256-cfb')
     config['port_password'] = config.get('port_password', None)
     config['timeout'] = int(config.get('timeout', 300))
     config['fast_open'] = config.get('fast_open', False)
@@ -264,7 +267,7 @@ General options:
   -v, -vv                verbose mode
   -q, -qq                quiet mode, only show warnings/errors
 
-Online help: <https://github.com/clowwindy/shadowsocks>
+Online help: <https://github.com/shadowsocks/shadowsocks>
 ''')
 
 
@@ -286,6 +289,7 @@ Proxy options:
   -t TIMEOUT             timeout in seconds, default: 300
   --fast-open            use TCP_FASTOPEN, requires Linux 3.7+
   --workers WORKERS      number of workers, available on Unix/Linux
+  --forbidden-ip IPLIST  comma seperated IP list forbidden to connect
 
 General options:
   -d start/stop/restart  daemon mode
@@ -294,7 +298,7 @@ General options:
   -v, -vv                verbose mode
   -q, -qq                quiet mode, only show warnings/errors
 
-Online help: <https://github.com/clowwindy/shadowsocks>
+Online help: <https://github.com/shadowsocks/shadowsocks>
 ''')
 
 

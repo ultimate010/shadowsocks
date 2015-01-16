@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2014 clowwindy
+# Copyright (c) 2015 clowwindy
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -121,7 +121,12 @@ class TCPRelayHandler(object):
         self._data_to_write_to_remote = []
         self._upstream_status = WAIT_STATUS_READING
         self._downstream_status = WAIT_STATUS_INIT
+        self._client_address = local_sock.getpeername()[:2]
         self._remote_address = None
+        if 'forbidden_ip' in config:
+            self._forbidden_iplist = config['forbidden_ip']
+        else:
+            self._forbidden_iplist = None
         if is_local:
             self._chosen_server = self._get_a_server()
         fd_to_handlers[local_sock.fileno()] = self
@@ -294,8 +299,9 @@ class TCPRelayHandler(object):
             if header_result is None:
                 raise Exception('can not parse header')
             addrtype, remote_addr, remote_port, header_length = header_result
-            logging.info('connecting %s:%d' % (common.to_str(remote_addr),
-                                               remote_port))
+            logging.info('connecting %s:%d from %s:%d' %
+                         (common.to_str(remote_addr), remote_port,
+                          self._client_address[0], self._client_address[1]))
             self._remote_address = (remote_addr, remote_port)
             # pause reading
             self._update_stream(STREAM_UP, WAIT_STATUS_WRITING)
@@ -317,7 +323,7 @@ class TCPRelayHandler(object):
                 self._dns_resolver.resolve(remote_addr,
                                            self._handle_dns_resolved)
         except Exception as e:
-            logging.error(e)
+            self._log_error(e)
             if self._config['verbose']:
                 traceback.print_exc()
             # TODO use logging when debug completed
@@ -329,6 +335,10 @@ class TCPRelayHandler(object):
         if len(addrs) == 0:
             raise Exception("getaddrinfo failed for %s:%d" % (ip,  port))
         af, socktype, proto, canonname, sa = addrs[0]
+        if self._forbidden_iplist:
+            if common.to_str(sa[0]) in self._forbidden_iplist:
+                raise Exception('IP %s is in forbidden list, reject' %
+                                common.to_str(sa[0]))
         remote_sock = socket.socket(af, socktype, proto)
         self._remote_sock = remote_sock
         self._fd_to_handlers[remote_sock.fileno()] = self
@@ -338,12 +348,13 @@ class TCPRelayHandler(object):
 
     def _handle_dns_resolved(self, result, error):
         if error:
-            logging.error(error)
+            self._log_error(error)
             self.destroy()
             return
         if result:
             ip = result[1]
             if ip:
+
                 try:
                     self._stage = STAGE_CONNECTING
                     remote_addr = ip
@@ -506,6 +517,10 @@ class TCPRelayHandler(object):
                 self._on_local_write()
         else:
             logging.warn('unknown socket')
+
+    def _log_error(self, e):
+        logging.error('%s when handling connection from %s:%d' %
+                      (e, self._client_address[0], self._client_address[1]))
 
     def destroy(self):
         # destroy the handler and release any resources
