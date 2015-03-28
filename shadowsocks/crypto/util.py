@@ -1,29 +1,42 @@
 #!/usr/bin/env python
-
-# Copyright (c) 2014 clowwindy
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+# Copyright 2015 clowwindy
 #
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
 from __future__ import absolute_import, division, print_function, \
     with_statement
 
+import os
 import logging
+
+
+def find_library_nt(name):
+    # modified from ctypes.util
+    # ctypes.util.find_library just returns first result he found
+    # but we want to try them all
+    # because on Windows, users may have both 32bit and 64bit version installed
+    results = []
+    for directory in os.environ['PATH'].split(os.pathsep):
+        fname = os.path.join(directory, name)
+        if os.path.isfile(fname):
+            results.append(fname)
+        if fname.lower().endswith(".dll"):
+            continue
+        fname = fname + ".dll"
+        if os.path.isfile(fname):
+            results.append(fname)
+    return results
 
 
 def find_library(possible_lib_names, search_symbol, library_name):
@@ -41,9 +54,12 @@ def find_library(possible_lib_names, search_symbol, library_name):
         lib_names.append('lib' + lib_name)
 
     for name in lib_names:
-        path = ctypes.util.find_library(name)
-        if path:
-            paths.append(path)
+        if os.name == "nt":
+            paths.extend(find_library_nt(name))
+        else:
+            path = ctypes.util.find_library(name)
+            if path:
+                paths.append(path)
 
     if not paths:
         # We may get here when find_library fails because, for example,
@@ -56,8 +72,7 @@ def find_library(possible_lib_names, search_symbol, library_name):
                 '/usr/local/lib*/lib%s.*' % name,
                 '/usr/lib*/lib%s.*' % name,
                 'lib%s.*' % name,
-                '%s.dll' % name,
-                'lib%s.dll' % name]
+                '%s.dll' % name]
 
             for pat in patterns:
                 files = glob.glob(pat)
