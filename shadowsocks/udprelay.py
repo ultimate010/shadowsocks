@@ -62,7 +62,6 @@
 from __future__ import absolute_import, division, print_function, \
     with_statement
 
-import time
 import socket
 import logging
 import struct
@@ -76,8 +75,9 @@ from shadowsocks.common import parse_header, pack_addr
 BUF_SIZE = 65536
 
 
-def client_key(a, b, c, d):
-    return '%s:%s:%s:%s' % (a, b, c, d)
+def client_key(source_addr, server_af):
+    # notice this is server af, not dest af
+    return '%s:%s:%d' % (source_addr[0], source_addr[1], server_af)
 
 
 class UDPRelay(object):
@@ -102,9 +102,9 @@ class UDPRelay(object):
                                          close_callback=self._close_client)
         self._client_fd_to_server_addr = \
             lru_cache.LRUCache(timeout=config['timeout'])
+        self._dns_cache = lru_cache.LRUCache(timeout=300)
         self._eventloop = None
         self._closed = False
-        self._last_time = time.time()
         self._sockets = set()
         if 'forbidden_ip' in config:
             self._forbidden_iplist = config['forbidden_ip']
@@ -169,29 +169,35 @@ class UDPRelay(object):
         else:
             server_addr, server_port = dest_addr, dest_port
 
-        key = client_key(r_addr[0], r_addr[1], dest_addr, dest_port)
+        addrs = self._dns_cache.get(server_addr, None)
+        if addrs is None:
+            addrs = socket.getaddrinfo(server_addr, server_port, 0,
+                                       socket.SOCK_DGRAM, socket.SOL_UDP)
+            if not addrs:
+                # drop
+                return
+            else:
+                self._dns_cache[server_addr] = addrs
+
+        af, socktype, proto, canonname, sa = addrs[0]
+        key = client_key(r_addr, af)
+        logging.debug(key)
         client = self._cache.get(key, None)
         if not client:
             # TODO async getaddrinfo
-            addrs = socket.getaddrinfo(server_addr, server_port, 0,
-                                       socket.SOCK_DGRAM, socket.SOL_UDP)
-            if addrs:
-                af, socktype, proto, canonname, sa = addrs[0]
-                if self._forbidden_iplist:
-                    if common.to_str(sa[0]) in self._forbidden_iplist:
-                        logging.debug('IP %s is in forbidden list, drop' %
-                                      common.to_str(sa[0]))
-                        # drop
-                        return
-                client = socket.socket(af, socktype, proto)
-                client.setblocking(False)
-                self._cache[key] = client
-                self._client_fd_to_server_addr[client.fileno()] = r_addr
-            else:
-                # drop
-                return
+            if self._forbidden_iplist:
+                if common.to_str(sa[0]) in self._forbidden_iplist:
+                    logging.debug('IP %s is in forbidden list, drop' %
+                                  common.to_str(sa[0]))
+                    # drop
+                    return
+            client = socket.socket(af, socktype, proto)
+            client.setblocking(False)
+            self._cache[key] = client
+            self._client_fd_to_server_addr[client.fileno()] = r_addr
+
             self._sockets.add(client.fileno())
-            self._eventloop.add(client, eventloop.POLL_IN)
+            self._eventloop.add(client, eventloop.POLL_IN, self)
 
         if self._is_local:
             data = encrypt.encrypt_all(self._password, self._method, 1, data)
@@ -249,34 +255,38 @@ class UDPRelay(object):
         if self._closed:
             raise Exception('already closed')
         self._eventloop = loop
-        loop.add_handler(self._handle_events)
 
         server_socket = self._server_socket
         self._eventloop.add(server_socket,
-                            eventloop.POLL_IN | eventloop.POLL_ERR)
+                            eventloop.POLL_IN | eventloop.POLL_ERR, self)
+        loop.add_periodic(self.handle_periodic)
 
-    def _handle_events(self, events):
-        for sock, fd, event in events:
-            if sock == self._server_socket:
-                if event & eventloop.POLL_ERR:
-                    logging.error('UDP server_socket err')
-                self._handle_server()
-            elif sock and (fd in self._sockets):
-                if event & eventloop.POLL_ERR:
-                    logging.error('UDP client_socket err')
-                self._handle_client(sock)
-        now = time.time()
-        if now - self._last_time > 3:
-            self._cache.sweep()
-            self._client_fd_to_server_addr.sweep()
-            self._last_time = now
+    def handle_event(self, sock, fd, event):
+        if sock == self._server_socket:
+            if event & eventloop.POLL_ERR:
+                logging.error('UDP server_socket err')
+            self._handle_server()
+        elif sock and (fd in self._sockets):
+            if event & eventloop.POLL_ERR:
+                logging.error('UDP client_socket err')
+            self._handle_client(sock)
+
+    def handle_periodic(self):
         if self._closed:
-            self._server_socket.close()
-            for sock in self._sockets:
-                sock.close()
-            self._eventloop.remove_handler(self._handle_events)
+            if self._server_socket:
+                self._server_socket.close()
+                self._server_socket = None
+                for sock in self._sockets:
+                    sock.close()
+                logging.info('closed UDP port %d', self._listen_port)
+        self._cache.sweep()
+        self._client_fd_to_server_addr.sweep()
 
     def close(self, next_tick=False):
+        logging.debug('UDP close')
         self._closed = True
         if not next_tick:
+            if self._eventloop:
+                self._eventloop.remove_periodic(self.handle_periodic)
+                self._eventloop.remove(self._server_socket)
             self._server_socket.close()
