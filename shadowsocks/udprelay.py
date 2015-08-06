@@ -81,7 +81,7 @@ def client_key(source_addr, server_af):
 
 
 class UDPRelay(object):
-    def __init__(self, config, dns_resolver, is_local):
+    def __init__(self, config, dns_resolver, is_local, stat_callback=None):
         self._config = config
         if is_local:
             self._listen_addr = config['local_address']
@@ -94,7 +94,7 @@ class UDPRelay(object):
             self._remote_addr = None
             self._remote_port = None
         self._dns_resolver = dns_resolver
-        self._password = config['password']
+        self._password = common.to_bytes(config['password'])
         self._method = config['method']
         self._timeout = config['timeout']
         self._is_local = is_local
@@ -121,6 +121,7 @@ class UDPRelay(object):
         server_socket.bind((self._listen_addr, self._listen_port))
         server_socket.setblocking(False)
         self._server_socket = server_socket
+        self._stat_callback = stat_callback
 
     def _get_a_server(self):
         server = self._config['server']
@@ -146,6 +147,8 @@ class UDPRelay(object):
         data, r_addr = server.recvfrom(BUF_SIZE)
         if not data:
             logging.debug('UDP handle_server: data is empty')
+        if self._stat_callback:
+            self._stat_callback(self._listen_port, len(data))
         if self._is_local:
             frag = common.ord(data[2])
             if frag != 0:
@@ -181,7 +184,6 @@ class UDPRelay(object):
 
         af, socktype, proto, canonname, sa = addrs[0]
         key = client_key(r_addr, af)
-        logging.debug(key)
         client = self._cache.get(key, None)
         if not client:
             # TODO async getaddrinfo
@@ -221,6 +223,8 @@ class UDPRelay(object):
         if not data:
             logging.debug('UDP handle_client: data is empty')
             return
+        if self._stat_callback:
+            self._stat_callback(self._listen_port, len(data))
         if not self._is_local:
             addrlen = len(r_addr[0])
             if addrlen > 255:
@@ -290,3 +294,5 @@ class UDPRelay(object):
                 self._eventloop.remove_periodic(self.handle_periodic)
                 self._eventloop.remove(self._server_socket)
             self._server_socket.close()
+            for client in list(self._cache.values()):
+                client.close()
