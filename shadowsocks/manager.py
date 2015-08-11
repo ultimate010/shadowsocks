@@ -46,13 +46,17 @@ class Manager(object):
         try:
             manager_address = config['manager_address']
             if ':' in manager_address:
-                addr = manager_address.split(':')
+                addr = manager_address.rsplit(':', 1)
                 addr = addr[0], int(addr[1])
-                family = socket.AF_INET
+                addrs = socket.getaddrinfo(addr[0], addr[1])
+                if addrs:
+                    family = addrs[0][0]
+                else:
+                    logging.error('invalid address: %s', manager_address)
+                    exit(1)
             else:
                 addr = manager_address
                 family = socket.AF_UNIX
-            # TODO use address instead of port
             self._control_socket = socket.socket(family,
                                                  socket.SOCK_DGRAM)
             self._control_socket.bind(addr)
@@ -110,14 +114,17 @@ class Manager(object):
                 command, config = parsed
                 a_config = self._config.copy()
                 if config:
+                    # let the command override the configuration file
                     a_config.update(config)
                 if 'server_port' not in a_config:
                     logging.error('can not find server_port in config')
                 else:
                     if command == 'add':
                         self.add_port(a_config)
+                        self._send_control_data(b'ok')
                     elif command == 'remove':
                         self.remove_port(a_config)
+                        self._send_control_data(b'ok')
                     elif command == 'ping':
                         self._send_control_data(b'pong')
                     else:
@@ -133,7 +140,7 @@ class Manager(object):
             return data, None
         command, config_json = parts
         try:
-            config = json.loads(config_json)
+            config = shell.parse_json_in_str(config_json)
             return command, config
         except Exception as e:
             logging.error(e)
@@ -148,6 +155,7 @@ class Manager(object):
 
         def send_data(data_dict):
             if data_dict:
+                # use compact JSON format (without space)
                 data = common.to_bytes(json.dumps(data_dict,
                                                   separators=(',', ':')))
                 self._send_control_data(b'stat: ' + data)
@@ -155,6 +163,7 @@ class Manager(object):
         for k, v in self._statistics.items():
             r[k] = v
             i += 1
+            # split the data into segments that fit in UDP packets
             if i >= STAT_SEND_LIMIT:
                 send_data(r)
                 r.clear()
@@ -222,17 +231,22 @@ def test():
 
     # test add and remove
     time.sleep(1)
-    cli.send(b'add: {"server_port":7001, "password":"1234"}')
+    cli.send(b'add: {"server_port":7001, "password":"asdfadsfasdf"}')
     time.sleep(1)
     assert 7001 in manager._relays
+    data, addr = cli.recvfrom(1506)
+    assert b'ok' in data
+
     cli.send(b'remove: {"server_port":8381}')
     time.sleep(1)
     assert 8381 not in manager._relays
+    data, addr = cli.recvfrom(1506)
+    assert b'ok' in data
     logging.info('add and remove test passed')
 
     # test statistics for TCP
     header = common.pack_addr(b'google.com') + struct.pack('>H', 80)
-    data = encrypt.encrypt_all(b'1234', 'aes-256-cfb', 1,
+    data = encrypt.encrypt_all(b'asdfadsfasdf', 'aes-256-cfb', 1,
                                header + b'GET /\r\n\r\n')
     tcp_cli = socket.socket()
     tcp_cli.connect(('127.0.0.1', 7001))
@@ -244,7 +258,7 @@ def test():
     data = common.to_str(data)
     assert data.startswith('stat: ')
     data = data.split('stat:')[1]
-    stats = json.loads(data)
+    stats = shell.parse_json_in_str(data)
     assert '7001' in stats
     logging.info('TCP statistics test passed')
 
