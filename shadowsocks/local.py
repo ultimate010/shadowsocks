@@ -22,10 +22,25 @@ import sys
 import os
 import logging
 import signal
+import random
+import time
+import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../'))
 from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, asyncdns
+stat_len = 0
 
+def stat_handler(port, data):
+    global stat_len
+    stat_len += data
+
+def monitor():
+    while True:
+        global stat_len
+        speed = stat_len / 1024 / 3
+        logging.info('Speed: %d kb/s' % speed)
+        stat_len = 0
+        time.sleep(3)
 
 def main():
     shell.check_python()
@@ -45,8 +60,15 @@ def main():
                      (config['local_address'], config['local_port']))
 
         dns_resolver = asyncdns.DNSResolver()
-        tcp_server = tcprelay.TCPRelay(config, dns_resolver, True)
-        udp_server = udprelay.UDPRelay(config, dns_resolver, True)
+        tcp_server = tcprelay.TCPRelay(config, dns_resolver, True,
+                                       stat_callback=stat_handler)
+
+        a_config = config.copy()
+        a_config['server_port'] = random.choice(a_config['port_password'].keys())
+        a_config['password'] = a_config['port_password'][a_config['server_port']]
+
+        udp_server = udprelay.UDPRelay(a_config, dns_resolver, True,
+                                       stat_callback=stat_handler)
         loop = eventloop.EventLoop()
         dns_resolver.add_to_loop(loop)
         tcp_server.add_to_loop(loop)
@@ -61,8 +83,12 @@ def main():
         def int_handler(signum, _):
             sys.exit(1)
         signal.signal(signal.SIGINT, int_handler)
-
         daemon.set_user(config.get('user', None))
+
+        t = threading.Thread(target=monitor, args=(), name='monitor')
+        t.daemon = True
+        t.start()
+
         loop.run()
     except Exception as e:
         shell.print_exception(e)

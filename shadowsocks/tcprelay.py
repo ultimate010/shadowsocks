@@ -105,8 +105,6 @@ class TCPRelayHandler(object):
         # if is_local, this is sslocal
         self._is_local = is_local
         self._stage = STAGE_INIT
-        self._encryptor = encrypt.Encryptor(config['password'],
-                                            config['method'])
         self._fastopen_connected = False
         self._data_to_write_to_local = []
         self._data_to_write_to_remote = []
@@ -120,6 +118,13 @@ class TCPRelayHandler(object):
             self._forbidden_iplist = None
         if is_local:
             self._chosen_server = self._get_a_server()
+        if config.get('port_password', None):
+            self._encryptor = encrypt.Encryptor(config['port_password']
+                                                [str(self._chosen_server[1])],
+                                                config['method'])
+        else:
+            self._encryptor = encrypt.Encryptor(config['password'],
+                                                config['method'])
         fd_to_handlers[local_sock.fileno()] = self
         local_sock.setblocking(False)
         local_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
@@ -139,9 +144,14 @@ class TCPRelayHandler(object):
 
     def _get_a_server(self):
         server = self._config['server']
-        server_port = self._config['server_port']
+
+        if self._config.get('port_password', None):
+            server_port = self._config['port_password'].keys()
+        else:
+            server_port = self._config['server_port']
+
         if type(server_port) == list:
-            server_port = random.choice(server_port)
+            server_port = int(random.choice(server_port))
         if type(server) == list:
             server = random.choice(server)
         logging.debug('chosen server: %s:%d', server, server_port)
