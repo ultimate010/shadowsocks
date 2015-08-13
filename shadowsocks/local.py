@@ -64,8 +64,11 @@ def main():
                                        stat_callback=stat_handler)
 
         a_config = config.copy()
-        a_config['server_port'] = random.choice(a_config['port_password'].keys())
-        a_config['password'] = a_config['port_password'][a_config['server_port']]
+        if a_config.get('port_password', None):
+            a_config['server_port'] = random.choice(
+                a_config['port_password'].keys())
+            a_config['password'] = a_config['port_password']\
+                [a_config['server_port']]
 
         udp_server = udprelay.UDPRelay(a_config, dns_resolver, True,
                                        stat_callback=stat_handler)
