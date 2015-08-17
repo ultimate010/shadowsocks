@@ -1,17 +1,27 @@
 #!/usr/bin/python
 
 import json
+import random
+import string
+import sys
 
-with open('server-multi-passwd-performance.json', 'wb') as f:
+
+def random_string(length):
+    return ''.join(random.choice(string.ascii_uppercase) for i in range(length))
+
+
+start = 1025
+
+with open(sys.argv[1], 'wb') as f:
     r = {
-        'server': '127.0.0.1',
+        'server': '0.0.0.0',
         'local_port': 1081,
-        'timeout': 60,
+        'timeout': 600,
         'method': 'aes-256-cfb'
     }
     ports = {}
-    for i in range(7000, 9000):
-        ports[str(i)] = 'aes_password'
+    for i in range(start, start + 25):
+        ports[str(i)] = random_string(8)
 
     r['port_password'] = ports
     print(r)
